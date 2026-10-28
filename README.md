@@ -35,7 +35,47 @@ License: CC BY-NC-SA 4.0 → this site stays non-commercial; derived data shared
 
 ## 4. Architecture
 
-_TBD — proposed:_ static site, SQL runs **in the browser** (WASM database). No backend, no user DB access, no server to secure.
+Static site. SQL runs **in the browser** (DuckDB-WASM). No backend, no data in git.
+
+```mermaid
+sequenceDiagram
+    participant Push as push to main
+    participant GA as GitHub Actions
+    participant K as Kaggle
+    participant P as GitHub Pages
+    participant B as Browser
+    Push->>GA: Deploy workflow
+    GA->>GA: cache hit on hash(build_data.py)?
+    GA->>K: kagglehub download (only on cache miss)
+    GA->>GA: CSV -> data/*.parquet (8 tables, zstd)
+    GA->>P: upload + deploy
+    B->>P: index.html + DuckDB-WASM (jsDelivr)
+    B->>P: HTTP range reads data/*.parquet
+    B->>B: user SQL runs locally
+```
+
+**Deploy (GitHub Actions, once per push to `main`)**
+
+1. Push to `main` triggers `.github/workflows/deploy.yml`.
+2. Cache check, keyed on hash of `scripts/build_data.py`:
+   - hit → reuse `data/`, skip Kaggle (most pushes)
+   - miss → download (first run, script changed, or cache unused 7 days)
+3. `kagglehub` downloads Olist using the `KAGGLE_API_TOKEN` repo secret.
+4. `scripts/build_data.py` converts 8 CSVs → `data/*.parquet` (zstd, ~22 MB).
+5. Site (`index.html` + `data/`) deployed to GitHub Pages.
+
+**Visit (user's browser, every page view)**
+
+6. Browser loads `index.html` from Pages + DuckDB-WASM engine from jsDelivr (cached after first visit).
+7. Each table is a view over `data/<table>.parquet`, read via HTTP range requests — only the bytes a query touches are fetched.
+8. User SQL runs locally in their tab. `DROP`/`DELETE` only affect that tab; refresh restores.
+
+| Who | Talks to | When |
+|---|---|---|
+| GitHub Actions | Kaggle | Cache miss only |
+| GitHub Actions | Pages | Every deploy |
+| Browser | Pages, jsDelivr | Every visit |
+| Browser | Kaggle | Never |
 
 ## 5. Problem format
 
@@ -43,7 +83,8 @@ _TBD_ — each problem = statement, tables used, parts (prompt + expected result
 
 ## 6. Hosting
 
-- Netlify, custom subdomain `sqlbusinessproblems.karthikiyer.info` (zone `karthikiyer.info` on Netlify DNS).
+- GitHub Pages (source: GitHub Actions), custom subdomain `sqlbusinessproblems.karthikiyer.info`.
+- DNS: `CNAME sqlbusinessproblems → karthikiyer365.github.io` in Netlify DNS (zone `karthikiyer.info`), same pattern as `projects` / `writing`.
 
 ## 7. Local development
 
