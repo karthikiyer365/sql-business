@@ -1,0 +1,32 @@
+[
+  {
+    "id": "repeat-buyers",
+    "title": "Repeat buyers",
+    "summary": "How many customers come back, and are they worth a loyalty program?",
+    "level": "medium",
+    "dept": "Growth",
+    "concepts": ["JOIN", "GROUP BY", "HAVING", "CASE", "CTE"],
+    "minutes": 20,
+    "exec": { "role": "Head of Growth", "initials": "HG", "note": "needs this before Monday's budget review" },
+    "brief": "We grew fast in 2017, but I keep hearing most customers never come back. Before I fund a loyalty program, tell me how many customers actually bought twice, and what they're worth compared to everyone else.",
+    "deliver": "Number of repeat customers, and average spend per repeat vs one-time customer.",
+    "tables": ["orders", "customers", "order_items"],
+    "parts": [
+      {
+        "ask": "How many unique customers do we have?",
+        "solution": "SELECT count(DISTINCT customer_unique_id) AS unique_customers FROM customers",
+        "win": "Good. That's the base I'll measure everything against."
+      },
+      {
+        "ask": "How many of them placed more than one order?",
+        "solution": "SELECT count(*) AS repeat_customers FROM (SELECT c.customer_unique_id FROM customers c JOIN orders o USING (customer_id) GROUP BY 1 HAVING count(*) > 1)",
+        "win": "Small, but real. Now tell me what they're worth."
+      },
+      {
+        "ask": "Average spend per customer (sum of item price, no freight) for repeat vs one-time customers. Customers with no items count as 0. Label the groups `Repeat` and `One Time`.",
+        "solution": "WITH per_customer AS (SELECT c.customer_unique_id, count(DISTINCT o.order_id) AS orders, coalesce(sum(i.price), 0) AS spend FROM customers c JOIN orders o USING (customer_id) LEFT JOIN order_items i USING (order_id) GROUP BY 1) SELECT CASE WHEN orders > 1 THEN 'Repeat' ELSE 'One Time' END AS customer_type, round(avg(spend), 2) AS avg_spend FROM per_customer GROUP BY 1",
+        "win": "Repeat customers spend almost twice as much. That's the case for the loyalty program."
+      }
+    ]
+  }
+]
