@@ -2,92 +2,125 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>SQL Business Problems</title>
+<meta name="description" content="Learn SQL through real business problems on real marketplace data. Runs in your browser.">
 <link rel="icon" href="data:,">
-<style>
-  :root { --bg:#fff; --fg:#1a1a1a; --muted:#666; --line:#ddd; --code:#f6f6f4; --err:#b00020; }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg:#141414; --fg:#eaeaea; --muted:#999; --line:#333; --code:#1e1e1e; --err:#ff6b6b; }
-  }
-  body { margin:0 auto; max-width:1100px; padding:16px; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, sans-serif; }
-  textarea { width:100%; box-sizing:border-box; min-height:160px; padding:12px; font:14px/1.5 ui-monospace, monospace; background:var(--code); color:var(--fg); border:1px solid var(--line); border-radius:6px; }
-  button { margin:8px 0; padding:8px 16px; font:inherit; cursor:pointer; }
-  #status { color:var(--muted); margin-left:8px; }
-  #error { color:var(--err); white-space:pre-wrap; font-family:ui-monospace, monospace; }
-  #result { overflow-x:auto; }
-  table { border-collapse:collapse; font:13px ui-monospace, monospace; }
-  th, td { border:1px solid var(--line); padding:4px 8px; text-align:left; white-space:nowrap; }
-  th { background:var(--code); }
-</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+<script type="module" src="assets/app.js"></script>
 </head>
 <body>
-<h1>SQL Business Problems</h1>
-<p>Tables: <code id="tables">loading…</code></p>
-<textarea id="sql" spellcheck="false">SELECT order_status, count(*) AS orders
-FROM orders
-GROUP BY order_status
-ORDER BY orders DESC;</textarea>
-<div><button id="run" disabled>Run (Ctrl/⌘+Enter)</button><span id="status">Loading DuckDB…</span></div>
-<div id="error"></div>
-<div id="result"></div>
 
-<script type="module">
-import * as duckdb from 'https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.33.1-dev57.0/+esm';
+<!-- ================= Landing ================= -->
+<div id="landing" hidden>
+  <section class="hero gutter">
+    <div class="wrap nav">
+      <span class="mark"><i></i>SQL Business Problems</span>
+      <a href="https://karthikiyer.info">karthikiyer.info ↗</a>
+    </div>
+    <div class="wrap hero-body">
+      <span class="eyebrow">SQL practice from the business side</span>
+      <h1>Learn SQL through <span>real business</span> problems.</h1>
+      <p>Executives ask real questions about a real marketplace: <b>100k orders from Olist, Brazil, 2016–2018</b>. You get the brief and a peek at the tables, then write SQL part by part until the answer holds up. When you miss, the exec tells you why.</p>
+      <div class="facts" id="facts"></div>
+    </div>
+    <div class="wrap"><a class="cue" href="#problems"><i></i>Browse problems</a></div>
+  </section>
 
-const TABLES = ['customers', 'orders', 'order_items', 'order_payments', 'order_reviews', 'products', 'sellers', 'category_translation'];
-const MAX_ROWS = 500; // render cap; full result still counted
-const $ = id => document.getElementById(id);
+  <section class="lib gutter" id="problems">
+    <div class="wrap lib-in">
+      <div class="lib-head">
+        <div class="stack"><span class="eyebrow">Problem library</span><h2>Pick a question</h2></div>
+        <form class="filters" id="filters" aria-label="Filter problems">
+          <label>Level<select id="f-level"><option value="">All levels</option></select></label>
+          <label>SQL concept<select id="f-concept"><option value="">All concepts</option></select></label>
+          <label>Department<select id="f-dept"><option value="">All departments</option></select></label>
+          <button type="reset" class="clear">Clear</button>
+        </form>
+      </div>
+      <span class="count" id="count" aria-live="polite"></span>
+      <div class="groups" id="groups"></div>
+    </div>
+  </section>
 
-const bundle = await duckdb.selectBundle(duckdb.getJsDelivrBundles());
-const workerUrl = URL.createObjectURL(new Blob([`importScripts("${bundle.mainWorker}");`], { type: 'text/javascript' }));
-const db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), new Worker(workerUrl));
-await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
-URL.revokeObjectURL(workerUrl);
+  <footer class="gutter">
+    <div class="wrap foot">
+      <span>Data: <a href="https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce">Olist Brazilian E-Commerce</a> · CC BY-NC-SA 4.0 · non-commercial</span>
+      <span>Built by Karthik Iyer</span>
+    </div>
+  </footer>
+</div>
 
-// Views over parquet: HTTP range reads fetch only bytes a query needs. Each visitor's copy is private.
-const conn = await db.connect();
-for (const t of TABLES) {
-  await db.registerFileURL(`${t}.parquet`, new URL(`data/${t}.parquet`, location.href).href, duckdb.DuckDBDataProtocol.HTTP, false);
-  await conn.query(`CREATE VIEW ${t} AS SELECT * FROM '${t}.parquet'`);
-}
-$('tables').textContent = TABLES.join(', ');
-$('status').textContent = 'Ready';
-$('run').disabled = false;
+<!-- ================= Problem ================= -->
+<div id="problem" hidden>
+  <header class="bar gutter">
+    <div class="wrap bar-in">
+      <a class="back" href="#">← All problems</a>
+      <div class="bar-title"><span id="p-no"></span><strong id="p-title"></strong></div>
+      <div class="progress"><span id="p-progress"></span><span class="segs" id="p-segs"></span></div>
+    </div>
+  </header>
 
-function cell(value, type) {
-  if (value == null) return 'NULL';
-  if (/^(Timestamp|Date)/.test(type)) return new Date(Number(value)).toISOString().replace('T', ' ').replace(/\.000Z$|Z$/, '');
-  return String(value);
-}
+  <div class="gutter"><div class="wrap work">
+    <div class="panel c-left brief-cell">
+      <div class="who">
+        <span class="avatar" id="p-initials"></span>
+        <span class="who-txt"><b id="p-role"></b><small id="p-note"></small></span>
+        <nav class="part-nav" id="p-parts" aria-label="Parts"></nav>
+      </div>
+      <p class="brief" id="p-brief"></p>
+      <div class="deliver"><span class="eyebrow">What I need from you</span><span id="p-deliver"></span></div>
+      <div class="ask-now"><span class="eyebrow" id="p-ask-label"></span><span id="p-ask"></span></div>
+    </div>
 
-async function run() {
-  $('error').textContent = '';
-  $('result').replaceChildren();
-  $('status').textContent = 'Running…';
-  const started = performance.now();
-  try {
-    const res = await conn.query($('sql').value);
-    const fields = res.schema.fields;
-    const table = document.createElement('table');
-    const head = table.createTHead().insertRow();
-    for (const f of fields) head.appendChild(document.createElement('th')).textContent = f.name;
-    const body = table.createTBody();
-    for (const row of res.toArray().slice(0, MAX_ROWS)) {
-      const tr = body.insertRow();
-      for (const f of fields) tr.insertCell().textContent = cell(row[f.name], String(f.type));
-    }
-    $('result').appendChild(table);
-    const shown = res.numRows > MAX_ROWS ? ` (showing first ${MAX_ROWS})` : '';
-    $('status').textContent = `${res.numRows} rows${shown} · ${Math.round(performance.now() - started)} ms`;
-  } catch (e) {
-    $('error').textContent = e.message;
-    $('status').textContent = 'Error';
-  }
-}
+    <div class="panel sql-cell">
+      <div class="ed-head"><span class="eyebrow" id="p-sql-label"></span><span class="kbd">⌘ / Ctrl + Enter to run</span></div>
+      <div class="editor">
+        <div class="gutter-nums" id="lines" aria-hidden="true">1</div>
+        <textarea id="sql" spellcheck="false" aria-label="SQL editor" placeholder="Write SQL here. Run as often as you like."></textarea>
+      </div>
+      <div class="actions">
+        <span class="status" id="status" aria-live="polite">Loading DuckDB…</span>
+        <div class="act-btns">
+          <button class="btn" type="button" id="run" disabled>Run</button>
+          <span class="report-wrap" id="report-wrap">
+            <button class="btn ghost" type="button" id="report" aria-disabled="true" aria-describedby="report-tip" disabled>Report / Ask Exec</button>
+            <span class="report-tip" id="report-tip" role="tooltip">
+              <b>Report to management?</b>
+              This will report your current finding to management, and they will tell you if it is correct or give you additional info.
+              <span class="arm-bar"><i></i></span>
+              <span class="arm-txt"><span class="wait">Ready in 2 seconds…</span><span class="go">Ready. Click to report.</span></span>
+            </span>
+          </span>
+        </div>
+      </div>
+    </div>
 
-$('run').onclick = run;
-$('sql').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); run(); } });
-</script>
+    <div class="panel c-left feedback-cell">
+      <span class="eyebrow">Feedback</span>
+      <div class="verdict" id="verdict" aria-live="polite"><b></b><span class="say"></span><span class="why"></span></div>
+    </div>
+
+    <div class="panel result-cell">
+      <span class="eyebrow">Result</span>
+      <div class="snip" id="result"><p class="placeholder">Run a query to see results here.</p></div>
+      <span class="expect" id="expect"></span>
+    </div>
+
+    <section class="panel tables-full" aria-label="Tables for this problem">
+      <span class="eyebrow">Tables for this problem</span>
+      <div class="tabs" role="tablist" id="tabs"></div>
+      <div class="tbl-pane" data-pane="schema">
+        <p class="grain"><span class="eyebrow">How tables join</span>Lines show the key you join on and how many rows match on each side. Highlighted tables are the ones this problem uses.</p>
+        <div class="snip map" id="schema"><svg viewBox="0 0 1020 350" role="img" aria-label="Table map: orders joins order_payments, order_reviews and order_items on order_id, and customers on customer_id; order_items joins products on product_id and sellers on seller_id; products joins category_translation on product_category_name"><line class="medge" x1="375.0" y1="78" x2="375.0" y2="160"/><text class="mk" x="383.0" y="117.0">order_id</text><text class="mc" x="383.0" y="132.0">1 order : N payments</text><line class="medge" x1="190" y1="184.0" x2="290" y2="184.0"/><text class="mk" x="240.0" y="177.0" text-anchor="middle">order_id</text><text class="mc" x="240.0" y="199.0" text-anchor="middle">N : 1</text><line class="medge" x1="460" y1="184.0" x2="560" y2="184.0"/><text class="mk" x="510.0" y="177.0" text-anchor="middle">order_id</text><text class="mc" x="510.0" y="199.0" text-anchor="middle">1 : N</text><line class="medge" x1="730" y1="184.0" x2="830" y2="184.0"/><text class="mk" x="780.0" y="177.0" text-anchor="middle">seller_id</text><text class="mc" x="780.0" y="199.0" text-anchor="middle">N : 1</text><line class="medge" x1="645.0" y1="78" x2="645.0" y2="160"/><text class="mk" x="653.0" y="117.0">product_id</text><text class="mc" x="653.0" y="132.0">1 product : N items</text><line class="medge" x1="730" y1="54.0" x2="830" y2="54.0"/><text class="mk" x="780.0" y="47.0" text-anchor="middle">category</text><text class="mc" x="780.0" y="69.0" text-anchor="middle">N : 1</text><line class="medge" x1="375.0" y1="208" x2="375.0" y2="290"/><text class="mk" x="383.0" y="247.0">customer_id</text><text class="mc" x="383.0" y="262.0">1 : 1 (one per order)</text><g class="mnode" data-table="order_payments"><rect x="290" y="30" width="170" height="48"/><text class="mt" x="302" y="51">order_payments</text><text class="ms" x="302" y="68" data-rows></text></g><g class="mnode" data-table="products"><rect x="560" y="30" width="170" height="48"/><text class="mt" x="572" y="51">products</text><text class="ms" x="572" y="68" data-rows></text></g><g class="mnode" data-table="category_translation"><rect x="830" y="30" width="170" height="48"/><text class="mt" x="842" y="51">category_translation</text><text class="ms" x="842" y="68" data-rows></text></g><g class="mnode" data-table="order_reviews"><rect x="20" y="160" width="170" height="48"/><text class="mt" x="32" y="181">order_reviews</text><text class="ms" x="32" y="198" data-rows></text></g><g class="mnode" data-table="orders"><rect x="290" y="160" width="170" height="48"/><text class="mt" x="302" y="181">orders</text><text class="ms" x="302" y="198" data-rows></text></g><g class="mnode" data-table="order_items"><rect x="560" y="160" width="170" height="48"/><text class="mt" x="572" y="181">order_items</text><text class="ms" x="572" y="198" data-rows></text></g><g class="mnode" data-table="sellers"><rect x="830" y="160" width="170" height="48"/><text class="mt" x="842" y="181">sellers</text><text class="ms" x="842" y="198" data-rows></text></g><g class="mnode" data-table="customers"><rect x="290" y="290" width="170" height="48"/><text class="mt" x="302" y="311">customers</text><text class="ms" x="302" y="328" data-rows></text></g></svg></div>
+        <p class="map-note">1 : N means one row on the first side matches many on the other. Joining across two 1 : N links multiplies rows. "category" is product_category_name. Geolocation is not included on this site.</p>
+      </div>
+      <div id="panes"></div>
+    </section>
+  </div></div>
+</div>
+
 </body>
 </html>
