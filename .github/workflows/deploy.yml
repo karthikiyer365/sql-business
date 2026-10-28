@@ -1,0 +1,47 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Kaggle download only when build script changes (cache evicted after 7 idle days)
+      - id: cache
+        uses: actions/cache@v4
+        with:
+          path: data
+          key: olist-v2-${{ hashFiles('scripts/build_data.py') }}
+
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: pip install duckdb==2.0.0 kagglehub==1.0.3 && python scripts/build_data.py
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

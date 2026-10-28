@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SQL Business Problems</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --bg:#fff; --fg:#1a1a1a; --muted:#666; --line:#ddd; --code:#f6f6f4; --err:#b00020; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#141414; --fg:#eaeaea; --muted:#999; --line:#333; --code:#1e1e1e; --err:#ff6b6b; }
+  }
+  body { margin:0 auto; max-width:1100px; padding:16px; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, sans-serif; }
+  textarea { width:100%; box-sizing:border-box; min-height:160px; padding:12px; font:14px/1.5 ui-monospace, monospace; background:var(--code); color:var(--fg); border:1px solid var(--line); border-radius:6px; }
+  button { margin:8px 0; padding:8px 16px; font:inherit; cursor:pointer; }
+  #status { color:var(--muted); margin-left:8px; }
+  #error { color:var(--err); white-space:pre-wrap; font-family:ui-monospace, monospace; }
+  #result { overflow-x:auto; }
+  table { border-collapse:collapse; font:13px ui-monospace, monospace; }
+  th, td { border:1px solid var(--line); padding:4px 8px; text-align:left; white-space:nowrap; }
+  th { background:var(--code); }
+</style>
+</head>
+<body>
+<h1>SQL Business Problems</h1>
+<p>Tables: <code id="tables">loading…</code></p>
+<textarea id="sql" spellcheck="false">SELECT order_status, count(*) AS orders
+FROM orders
+GROUP BY order_status
+ORDER BY orders DESC;</textarea>
+<div><button id="run" disabled>Run (Ctrl/⌘+Enter)</button><span id="status">Loading DuckDB…</span></div>
+<div id="error"></div>
+<div id="result"></div>
+
+<script type="module">
+import * as duckdb from 'https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.33.1-dev57.0/+esm';
+
+const TABLES = ['customers', 'orders', 'order_items', 'order_payments', 'order_reviews', 'products', 'sellers', 'category_translation'];
+const MAX_ROWS = 500; // render cap; full result still counted
+const $ = id => document.getElementById(id);
+
+const bundle = await duckdb.selectBundle(duckdb.getJsDelivrBundles());
+const workerUrl = URL.createObjectURL(new Blob([`importScripts("${bundle.mainWorker}");`], { type: 'text/javascript' }));
+const db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), new Worker(workerUrl));
+await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+URL.revokeObjectURL(workerUrl);
+
+// Views over parquet: HTTP range reads fetch only bytes a query needs. Each visitor's copy is private.
+const conn = await db.connect();
+for (const t of TABLES) {
+  await db.registerFileURL(`${t}.parquet`, new URL(`data/${t}.parquet`, location.href).href, duckdb.DuckDBDataProtocol.HTTP, false);
+  await conn.query(`CREATE VIEW ${t} AS SELECT * FROM '${t}.parquet'`);
+}
+$('tables').textContent = TABLES.join(', ');
+$('status').textContent = 'Ready';
+$('run').disabled = false;
+
+function cell(value, type) {
+  if (value == null) return 'NULL';
+  if (/^(Timestamp|Date)/.test(type)) return new Date(Number(value)).toISOString().replace('T', ' ').replace(/\.000Z$|Z$/, '');
+  return String(value);
+}
+
+async function run() {
+  $('error').textContent = '';
+  $('result').replaceChildren();
+  $('status').textContent = 'Running…';
+  const started = performance.now();
+  try {
+    const res = await conn.query($('sql').value);
+    const fields = res.schema.fields;
+    const table = document.createElement('table');
+    const head = table.createTHead().insertRow();
+    for (const f of fields) head.appendChild(document.createElement('th')).textContent = f.name;
+    const body = table.createTBody();
+    for (const row of res.toArray().slice(0, MAX_ROWS)) {
+      const tr = body.insertRow();
+      for (const f of fields) tr.insertCell().textContent = cell(row[f.name], String(f.type));
+    }
+    $('result').appendChild(table);
+    const shown = res.numRows > MAX_ROWS ? ` (showing first ${MAX_ROWS})` : '';
+    $('status').textContent = `${res.numRows} rows${shown} · ${Math.round(performance.now() - started)} ms`;
+  } catch (e) {
+    $('error').textContent = e.message;
+    $('status').textContent = 'Error';
+  }
+}
+
+$('run').onclick = run;
+$('sql').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); run(); } });
+</script>
+</body>
+</html>
